@@ -1,54 +1,111 @@
-import re
+class Token:
 
-# quebrar em dois tipos de token, números e stacks de operadores
-#única coisa que me falha fora token que não eprtence aos dois grupos é um número seguido de outro número sem operador (ex: "2 4")
+    def __init__(self, _type, value):
 
-def arithimize(line):
-    result= 0
+        #deixo como string pelo requerimento, mas preferiria um enum
+        self.type= _type
+        self.value= value
 
-    re_ops= re.compile(r"^\s*[-,+]*")
-    re_num= re.compile(r"^\s*[0-9]*")
+class Tokenizer:
 
-    inverter= 1 #1 quando positivo, -1, quando negativo
+    origin= None
+    position= 0
+    actual= None
 
-    line="0"+line #simplifica algumas presunções
-    while True:
-        num= re_num.search(line).group()
-        if not num:
-            print("Erro ao evaluar a expressão")
-            break;
-        result+= int(num)*inverter
-        line=re_num.split(line)[-1]
-        print(line)
+    def init(origin):
+        #Tokenizer.origin= origin
+        #limpar o whitespace aqui
+        Tokenizer.origin = ''.join(origin.split())
+        position= 0
+        actual= None
 
-        if not line:
-            break;
+    def selectNext():
+        #Pega o próximo token, dá um pop dele
 
-        ops= re_ops.search(line).group()
-        if not ops:
-            print("Erro ao evaluar a expressão")
-            break;
-        #calcular o inverter
-        inverter= 1
-        if ops.count('-')%2 == 1:
-            inverter= -1
-        line=re_ops.split(line)[-1]
-        print(line)
+        #curto-circuitar em EOF?
+        if Tokenizer.position == len(Tokenizer.origin):
+            #actual= Token('EOF', None)
+            #return actual
+            return None
 
-    return result
-'''
-r= arithimize("1+2")
-print("Teste 1: "+str(r))
+        #eu assumo que eu decido o tipo aqui também
+        char= Tokenizer.origin[Tokenizer.position]
 
-r= arithimize("3-2")
-print("Teste 2: "+str(r))
+        #limpar whitespaces, etc?
+        #if char.isspace():
 
-r= arithimize("1+2-3")
-print("Teste 3: "+str(r))
+        if char.isdigit():
+            #numeric
+            Tokenizer.position+=1
+            while(Tokenizer.position != len(Tokenizer.origin) and Tokenizer.origin[Tokenizer.position].isdigit()):
+                char+= Tokenizer.origin[Tokenizer.position]
+                Tokenizer.position+=1
 
-r= arithimize("11+22-33")
-print("Teste 4: "+str(r))
+            Tokenizer.actual= Token('NUMERIC', char)
 
-r= arithimize("789  +345  -   123")
-print("Teste 5: "+str(r))
-'''
+        elif char == '+':
+            #plus
+            Tokenizer.position+=1
+            Tokenizer.actual= Token('PLUS', char)
+
+        elif char == '-':
+            #minus
+            Tokenizer.position+=1
+            Tokenizer.actual= Token('MINUS', char)
+        else:
+            raise Exception('Unexpected character \"'+char+'\" at position '+str(Tokenizer.position)+", line:\n"+Tokenizer.origin)
+        return Tokenizer.actual
+
+class Parser:
+    #Para cada estado, fazer um set de estados válidos seguintes
+    states={
+        'INIT': set(['NUMERIC']),
+        'NUMERIC': set(['PLUS', 'MINUS', 'EOF']),
+        'PLUS': set(['NUMERIC']),
+        'MINUS': set(['NUMERIC']),
+        'EOF': set([])
+    }
+
+    #salvar o estado atual
+    current= None
+
+    tokens= Tokenizer
+
+    res=0
+    op= 1 #1 soma, -1 subtração
+
+    def run(code):
+        Parser.current= 'INIT'
+        Parser.tokens.init(code)
+
+        Parser.parseExpression()
+
+        return Parser.res
+
+    def parseExpression():
+        while(Parser.tokens.selectNext()):
+            t= Parser.tokens.actual
+            if t.type not in Parser.states[Parser.current]:
+                raise Exception('Unexpected word \"'+t.value+"\" of type \""+t.type+"\", expected: "+str(Parser.states[Parser.current]))
+
+            #agir de acordo com o tipo do token
+            if  t.type == 'NUMERIC':
+                Parser.res+= Parser.op*int(t.value)
+
+            if t.type == 'PLUS':
+                Parser.op= 1
+            if t.type == 'MINUS':
+                Parser.op= -1
+
+            #atualizar o estado
+            Parser.current= t.type
+
+        #EOF
+
+#testes
+#s= "1+2"
+#s= "3-2"
+#s= "1+2-3"
+#s= "11+22-33"
+s= "789 +345 - 123"
+print( Parser.run(s) )
