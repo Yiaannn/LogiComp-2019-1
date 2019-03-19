@@ -60,7 +60,18 @@ class Tokenizer:
             #minus
             Tokenizer.position+=1
             Tokenizer.actual= Token('DIV', char)
+
+        elif char == '(':
+            #minus
+            Tokenizer.position+=1
+            Tokenizer.actual= Token('PARENTHESIS_OPEN', char)
+
+        elif char == ')':
+            #minus
+            Tokenizer.position+=1
+            Tokenizer.actual= Token('PARENTHESIS_CLOSE', char)
         else:
+            #melhorar esse erro pra me dar o token inteiro incorreto
             raise Exception('Error: Unexpected character \"'+char+'\" at position '+str(Tokenizer.position)+", line:\n"+Tokenizer.origin)
         return Tokenizer.actual
 
@@ -95,25 +106,29 @@ class Parser:
 
     #Para cada estado, fazer um set de estados válidos seguintes
     states={
-        'INIT': set(['NUMERIC']),
+        'INIT': set(['NUMERIC', 'PLUS', 'MINUS', 'PARENTHESIS_OPEN']),
         'NUMERIC': set(['PLUS', 'MINUS', 'MULT', 'DIV', 'EOF']),
-        'PLUS': set(['NUMERIC']),
-        'MINUS': set(['NUMERIC']),
-        'MULT': set(['NUMERIC']),
-        'DIV': set(['NUMERIC']),
+        'PLUS': set(['NUMERIC', 'PLUS', 'MINUS', 'PARENTHESIS_OPEN']),
+        'MINUS': set(['NUMERIC', 'PLUS', 'MINUS', 'PARENTHESIS_OPEN']),
+        'MULT': set(['NUMERIC', 'PARENTHESIS_OPEN']),
+        'DIV': set(['NUMERIC', 'PARENTHESIS_OPEN']),
+        'PARENTHESIS_OPEN': set(['NUMERIC']),
         'EOF': set([])
     }
 
+    ptoken=0
+
     def run(code):
         Tokenizer.init(code)
-        return Parser.parseExpression().value
+        return Parser.parseExpression(True).value
 
-    def parseExpression(state='INIT'):
+    def parseExpression(root=False):
         res= None #onde eu vou guardar a resolução da minha expressão
         op= None#guarda a operação a ser executada
+        state='INIT'
 
         resolved_token= None #expressão reduzida em um token, usado em recursão
-
+        
         while(resolved_token or Tokenizer.selectNext()):
             t= resolved_token
             resolved_token= None
@@ -122,13 +137,21 @@ class Parser:
 
             #TODO: Confirmar porque não travo em string vazia
             if t.type not in Parser.states[state]:
+                if t.type=='PARENTHESIS_CLOSE':
+                    if Parser.ptoken:
+                        Parser.ptoken-=1
+                        break; #tratar como um EOF
+                    raise Exception('Error: Mismatched Parenthesis, \')\' found before \'(\' ')
                 raise Exception('Error: Unexpected word \"'+t.value+"\" of type \""+t.type+"\", expected: "+str(Parser.states[state]))
 
             #agir de acordo com o tipo do token
             if  t.type == 'NUMERIC':
 
                 if not res:
-                    res= t.value
+                    if op == 'MINUS':
+                        res= -t.value
+                    else:
+                        res= t.value
                 else:
                     if op == 'PLUS':
                         res+= t.value
@@ -147,11 +170,16 @@ class Parser:
                 #Entrar num novo escopo
                 resolved_token= Parser.parseExpression()
 
+            if t.type == 'PARENTHESIS_OPEN':
+                Parser.ptoken+=1
+                resolved_token= Parser.parseExpression()
+
             #atualizar o estado
             state= t.type
 
         #checar se nao cheguei em EOF cedo demais
-        if 'EOF' not in Parser.states[state]:
+        #diferenciar pelo caso do parentesis?
+        if 'EOF' not in Parser.states[state] or (root and Parser.ptoken):
             raise Exception('Error: Reached EOF before finishing Expression')
 
         return Token('NUMERIC', res)
