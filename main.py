@@ -70,11 +70,12 @@ class PrePro:
         comment= False;
         sanitized= ""
 
-        #poderia incluir caracter de escape, mas acho que a especificação não pede
-        for char in code:
+        #fazer a substituição para passar quebra de linha na linha de comando
+        code= code.replace('\\n', '\n')
 
-            #do exemplo não ficou completamente claro pra mim se o delimitador do comentário é o próprio ' ou uma quebra de linha
-            #assumindo quebra de linha:
+        #poderia incluir caracter de escape, mas acho que a especificação não pede
+        #por exemplo, string=(" \' isso vai ser lido como um comentário")
+        for char in code:
 
             if char == "\'" and not comment:
                 comment= True
@@ -151,7 +152,7 @@ class Parser:
 
         #checar se nao cheguei em EOF cedo demais
         if 'EOF' not in Parser.states[state]:
-            raise Exception('Error: Rached EOF before finishing Expression')
+            raise Exception('Error: Reached EOF before finishing Expression')
 
         return Token('NUMERIC', res)
 
