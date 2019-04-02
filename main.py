@@ -1,3 +1,5 @@
+import sys
+
 class Token:
 
     def __init__(self, _type, value):
@@ -22,8 +24,7 @@ class Tokenizer:
 
         #curto-circuitar em EOF?
         if Tokenizer.position == len(Tokenizer.origin):
-            #actual= Token('EOF', None)
-            #return actual
+            Tokenizer.actual= None
             return None
 
         #eu assumo que eu decido o tipo aqui também
@@ -81,9 +82,6 @@ class PrePro:
         comment= False;
         sanitized= ""
 
-        #fazer a substituição para passar quebra de linha na linha de comando
-        code= code.replace('\\n', '\n')
-
         #poderia incluir caracter de escape, mas acho que a especificação não pede
         #por exemplo, string=(" \' isso vai ser lido como um comentário")
         for char in code:
@@ -102,87 +100,175 @@ class PrePro:
 
         return sanitized
 
+class Node:
+
+
+    def __init__(self, value):
+        self.value= value
+        self.child_counter= 0
+        self.children=[]
+
+    def add_child(self, node):
+        #fazer um check se não estou adicionando filhos além do limite?
+        self.children.append(node)
+
+    def evaluate(self):
+        raise NotImplementedError
+
+    def is_filled(self):
+        raise NotImplementedError
+
+class NoOp(Node):
+    #eu não tenho certeza de como vou usar isso
+
+    def evaluate(self):
+        return self.value
+
+    def is_filled(self):
+        return len(self.children) == 0
+
+class BinOp(Node):
+    # +
+    # -
+    # *
+    # /
+
+    def evaluate(self):
+        if self.value=="+":
+            return self.children[0].evaluate() + self.children[1].evaluate()
+        if self.value=="-":
+            return self.children[0].evaluate() - self.children[1].evaluate()
+        if self.value=="*":
+            return self.children[0].evaluate() * self.children[1].evaluate()
+        if self.value=="/":
+            return self.children[0].evaluate() // self.children[1].evaluate()
+
+    def is_filled(self):
+        return len(self.children) == 2
+
+class UnOp(Node):
+    # +
+    # -
+
+    def evaluate(self):
+        #pegar o filho, resolver num Int
+        tmp= self.children[0].evaluate()
+        if self.value == "-":
+            tmp=-tmp
+        return tmp
+
+    def is_filled(self):
+        return len(self.children) == 1
+
+class IntVal(Node):
+
+    def evaluate(self):
+        #acho que não faço nada aqui além de retornar meu valor
+        return self.value
+
+    def is_filled(self):
+        return len(self.children) == 0
+
 class Parser:
 
     #Para cada estado, fazer um set de estados válidos seguintes
     states={
         'INIT': set(['NUMERIC', 'PLUS', 'MINUS', 'PARENTHESIS_OPEN']),
-        'NUMERIC': set(['PLUS', 'MINUS', 'MULT', 'DIV', 'EOF']),
+        'NUMERIC': set(['PLUS', 'MINUS', 'MULT', 'DIV', 'EOF', 'PARENTHESIS_CLOSE']),
         'PLUS': set(['NUMERIC', 'PLUS', 'MINUS', 'PARENTHESIS_OPEN']),
         'MINUS': set(['NUMERIC', 'PLUS', 'MINUS', 'PARENTHESIS_OPEN']),
         'MULT': set(['NUMERIC', 'PARENTHESIS_OPEN']),
         'DIV': set(['NUMERIC', 'PARENTHESIS_OPEN']),
         'PARENTHESIS_OPEN': set(['NUMERIC']),
+        'PARENTHESIS_CLOSE': set(['NUMERIC', 'PLUS', 'MINUS', 'MULT', 'DIV', 'EOF']),
         'EOF': set([])
     }
 
-    ptoken=0
+    ptoken= 0
+    state= 'INIT'
 
     def run(code):
         Tokenizer.init(code)
-        return Parser.parseExpression(True).value
 
-    def parseExpression(root=False):
-        res= None #onde eu vou guardar a resolução da minha expressão
-        op= None#guarda a operação a ser executada
-        state='INIT'
+        root= Parser.parseExpression()
+        while(Tokenizer.actual):
+            root= Parser.parseExpression(floater=root)
 
-        resolved_token= None #expressão reduzida em um token, usado em recursão
-        
-        while(resolved_token or Tokenizer.selectNext()):
-            t= resolved_token
-            resolved_token= None
-            if not t:
-                t= Tokenizer.actual
+        #posso checar por EOF pelo tokenizer.actual
+        if Parser.ptoken:
+            raise Exception('Error: Mismatched parenthesis. "(" could not be matched')
+        if 'EOF' not in Parser.states[Parser.state]:
+            raise Exception('Error: Reached EOF before finishing Expression')
+
+        return root
+
+    def parseExpression(floater= None, scope_power=0):
+        root= None #node em que tou trabalhando
+        #floater segura um node cujo pai ainda não foi parseado
+
+        while( (   (root== None) or (root and not root.is_filled())   ) and Tokenizer.selectNext()):
+            t= Tokenizer.actual
 
             #TODO: Confirmar porque não travo em string vazia
-            if t.type not in Parser.states[state]:
+            if t.type not in Parser.states[Parser.state]:
                 if t.type=='PARENTHESIS_CLOSE':
                     if Parser.ptoken:
                         Parser.ptoken-=1
                         break; #tratar como um EOF
                     raise Exception('Error: Mismatched Parenthesis, \')\' found before \'(\' ')
-                raise Exception('Error: Unexpected word \"'+t.value+"\" of type \""+t.type+"\", expected: "+str(Parser.states[state]))
+                raise Exception('Error: Unexpected word \"'+t.value+"\" of type \""+t.type+"\", expected: "+str(Parser.states[Parser.state]))
+            Parser.state= t.type
 
             #agir de acordo com o tipo do token
             if  t.type == 'NUMERIC':
+                    floater= IntVal(t.value)
+                    if scope_power == 1:
+                        root=floater
+                        floater= None
 
-                if not res:
-                    if op == 'MINUS':
-                        res= -t.value
-                    else:
-                        res= t.value
-                else:
-                    if op == 'PLUS':
-                        res+= t.value
-
-                    elif op == 'MINUS':
-                        res-= t.value
-
-                    elif op == 'MULT':
-                        res*= t.value
-
-                    elif op == 'DIV':
-                        res//= t.value
-
-            op= t.type
             if t.type == 'PLUS' or t.type == "MINUS":
-                #Entrar num novo escopo
-                resolved_token= Parser.parseExpression()
+                if floater:
+                    #operador binário
+                    root= BinOp(t.value)
+                    root.add_child(floater)
+                    floater= None
+                    root.add_child(Parser.parseExpression())
+                else:
+                    #operador unário
+                    root= UnOp(t.value)
+                    root.add_child(Parser.parseExpression())
+
+            if t.type == "MULT" or t.type == "DIV":
+                #não deveria existir um cenário que eu chego aqui sem um floater
+                #digo, assumindo um código bem-formado
+                root= BinOp(t.value)
+                root.add_child(floater)
+                floater= None
+                root.add_child(Parser.parseExpression(scope_power=1))
 
             if t.type == 'PARENTHESIS_OPEN':
-                Parser.ptoken+=1
-                resolved_token= Parser.parseExpression()
+                Parser.ptoken+= 1
+                root= Parser.parseExpression()
 
-            #atualizar o estado
-            state= t.type
+            if t.type == 'PARENTHESIS_CLOSE':
+                #deveria só ter um floater neste ponto
+                root= floater
+                floater= None
+                #preciso checar se meus parentesis fazem sentido aqui?
+                Parser.ptoken-= 1
+                if Parser.ptoken < 0:
+                    raise Exception('Error: Mismatched parenthesis. ")" could not be matched')
 
-        #checar se nao cheguei em EOF cedo demais
-        #diferenciar pelo caso do parentesis?
-        if 'EOF' not in Parser.states[state] or (root and Parser.ptoken):
-            raise Exception('Error: Reached EOF before finishing Expression')
+        #TODO se eu chegar no final somente com um floater, preciso tratar isso de alguma forma
+        #acho que promovo ele pro root?
+        if root == None:
+            root= floater
 
-        return Token('NUMERIC', res)
+        return root
 
-sanit= PrePro.run( input("Input teste: ") )
-print( Parser.run( sanit ) )
+if len(sys.argv) != 2:
+    print("Run with: \'python3 main.py <filename.vbs> \'")
+else:
+    with open(sys.argv[1], 'r') as f:
+        sanit= PrePro.run( f.read() )
+        print( Parser.run( sanit ).evaluate() )
