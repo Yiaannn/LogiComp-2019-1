@@ -15,11 +15,13 @@ Repositório referente a disciplina de Lógica da Computação do aluno Alexandr
 
 ### EBNF
 
+```
 Expressão= Termo, {('+'|'-'), Termo} ;
-Termo= Fator, {('\*'|'/'), Fator} ;
+Termo= Fator, {('*'|'/'), Fator} ;
 Fator= ('+'|'-'), Fator | número | identificador | '(', Expressão ')' ;
 Comandos= 'BEGIN', '\n', Comando, '\n', {Comando, '\n'}, 'END' ;
-Comando= Comandos | identificador, '=', Expressão | 'PRINT' Expressão | __vazio__ ;
+Comando= Comandos | identificador, '=', Expressão | 'PRINT', Expressão | __vazio__ ;
 
-identificador= [a-z], {[a-z] | [0-9] | '\_'} ;
+identificador= [a-z], {[a-z] | [0-9] | '_'} ;
 número= [0-9] ;
+```
