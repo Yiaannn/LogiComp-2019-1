@@ -65,34 +65,42 @@ class Tokenizer:
                 Tokenizer.actual= Token('IDENTIFIER', char)
 
         elif char == '+':
-            #plus
             Tokenizer.position+= 1
             Tokenizer.actual= Token('PLUS', char)
 
         elif char == '-':
-            #minus
             Tokenizer.position+= 1
             Tokenizer.actual= Token('MINUS', char)
 
         elif char == '*':
-            #minus
             Tokenizer.position+= 1
             Tokenizer.actual= Token('MULT', char)
 
         elif char == '/':
-            #minus
             Tokenizer.position+= 1
             Tokenizer.actual= Token('DIV', char)
 
         elif char == '(':
-            #minus
             Tokenizer.position+= 1
             Tokenizer.actual= Token('PARENTHESIS_OPEN', char)
 
         elif char == ')':
-            #minus
-            Tokenizer.position+=1
+            Tokenizer.position+= 1
             Tokenizer.actual= Token('PARENTHESIS_CLOSE', char)
+
+        elif char == '=':
+            Tokenizer.position+= 1
+            Tokenizer.actual= Token('EQUALS', char)
+
+            '''
+            elif char == '<':
+                Tokenizer.position+= 1
+                Tokenizer.actual= Token('LOWER_THAN', char)
+
+            elif char == '>':
+                Tokenizer.position+= 1
+                Tokenizer.actual= Token('GREATER_THAN', char)
+            '''
 
         elif char == '\n':
             #linebreak, que agora faz parte do léxico
@@ -275,6 +283,20 @@ class AssignOp(Node):
 
         SymbolTable.current.update(key, value)
 
+class Comparison_BinOP(Node):
+
+    def evaluate(self):
+        if self.value=="=":
+            return self.children[0].evaluate() == self.children[1].evaluate()
+        if self.value=="<":
+            return self.children[0].evaluate() < self.children[1].evaluate()
+        if self.value==">":
+            return self.children[0].evaluate() > self.children[1].evaluate()
+
+    def is_filled(self):
+        return len(self.children) == 2
+
+
 class Parser():
 
     def run(code):
@@ -317,10 +339,12 @@ class StatementsParser(Parser):
             if t.type == "END":
                 EOF= True
                 break;
+
             elif t.type == 'PRINT':
                 node= PrintOp()
                 node.add_child(ExpressionParser.run())
                 root.add_child(node)
+
             elif t.type == 'IDENTIFIER':
                 root.add_child(AssignmentParser.run( Identifier(t.value) ))
 
@@ -344,9 +368,16 @@ class AssignmentParser:
 
         root= AssignOp()
         root.add_child(floater)
+        t= Tokenizer.selectNext()
+        if t.type != 'EQUALS':
+            raise Exception('Error: Unexpected word \"'+t.value+"\" of type \""+t.type+"\", expected: EQUALS")
         root.add_child(ExpressionParser.run())
 
         return root
+
+class RelExpressionParser:
+    #ughhhh
+    pass
 
 class ExpressionParser:
     #TODO redefinir a condição de parada deste parser
@@ -401,6 +432,8 @@ class ExpressionParser:
                     floater= ExpressionParser.run(False, 1)
                 elif t.type == 'NUMERIC':
                     floater= IntVal(t.value)
+                elif t.type == 'IDENTIFIER':
+                    floater= Identifier(t.value)
                 elif t.type == 'PLUS' or t.type == 'MINUS':
                     #operador unário
                     floater= UnOp(t.value)
@@ -413,10 +446,12 @@ class ExpressionParser:
                         curr= hold
                         t= Tokenizer.selectNext()
 
-                    if t.type== "NUMERIC":
+                    if t.type == "NUMERIC":
                         curr.add_child( IntVal(t.value) )
+                    elif t.type == "IDENTIFIER":
+                        curr.add_child( Identifier(t.value) )
                     else:
-                        raise Exception('Error: Unexpected word \"'+str(t.value)+"\" of type \""+str(t.type)+"\", expected: NUMERIC")
+                        raise Exception('Error: Unexpected word \"'+str(t.value)+"\" of type \""+str(t.type)+"\", expected: NUMERIC or IDENTIFIER")
 
                 else:
                     raise Exception('Error: Unexpected word \"'+str(t.value)+"\" of type \""+str(t.type)+"\", expected: NUMERIC, PARENTHESIS_OPEN, PLUS or MINUS")
