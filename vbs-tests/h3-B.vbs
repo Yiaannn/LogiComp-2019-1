@@ -1,0 +1,3 @@
+BEGIN
+  PRINT (2*2
+END
