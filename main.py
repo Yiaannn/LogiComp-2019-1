@@ -17,7 +17,7 @@ class Tokenizer:
 
     #keywords=set(['begin', 'end', 'print', 'or', 'and', 'not'])
     #não tenho mais begin e end então?
-    keywords=set(['print', 'input', 'or', 'and', 'not', 'if', 'then', 'else', 'end', 'while', 'wend'])
+    keywords=set(['print', 'input', 'or', 'and', 'not', 'if', 'then', 'else', 'end', 'while', 'wend', 'sub', 'main', 'dim', 'as', 'integer', 'boolean'])
 
     def init(origin):
         Tokenizer.origin= origin
@@ -164,13 +164,30 @@ class SymbolTable:
 
     #por enquanto acho que não tem diferença prática entre definir e redefinir
     #estou assumindo também que é impossível declarar sem definir
+
+    def start(self, key, type):
+        if key in self.dict:
+            raise Exception("Variable "+str(key)+" already declared, redeclaration is not possible.")
+
+        self.dict[key]= [None, type] #lista na forma valor, tipo
+
     def update(self, key, value):
-        self.dict[key]= value
+        if key not in self.dict:
+            raise Exception("Variable "+str(key)+" has not yet been declared, assigning it a value is not possible.")
+
+        if( (isinstance(value, int) and self.dict[key][1] != 'integer') or (isinstance(value, bool) and self.dict[key][1] != 'boolean')  ):
+            raise Exception("Value "+str(value)+" assigned to variable "+str(key)+" is not of type "+str(self.dict[key][1])+".")
+
+        self.dict[key][0]= value
 
     def read(self, key):
         if key in self.dict:
-            return self.dict[key]
-        raise Exception("Variable "+str(key)+" not initialized!")
+            if self.dict[key] == None:
+                raise Exception("Variable "+str(key)+" not initialized before operation.")
+            else:
+                return self.dict[key][0]
+        else:
+            raise Exception("Variable "+str(key)+" has not yet been declared, no value can be obtained from it.")
 
 class Node:
 
@@ -195,6 +212,15 @@ class Node:
         print(tabs+str(self.value)+" ("+str(type(self))+")")
         for child in self.children:
             child.debug_print(tab+1)
+
+class Main_Node(Node):
+
+    def evaluate(self):
+        #apenas um filho, classe statements
+        self.children[0].evaluate()
+
+    def is_filled(self):
+        return len(self.children) == 0
 
 class NoOp(Node):
     #eu não tenho certeza de como vou usar isso
@@ -312,7 +338,6 @@ class IntVal(Node):
 class Identifier(Node):
 
     def evaluate(self):
-        #preciso garantir que meu SymbolTable setado sempre é o correto
         return SymbolTable.current.read(self.value)
 
     def is_filled(self):
@@ -334,16 +359,56 @@ class AssignOp(Node):
 
         SymbolTable.current.update(key, value)
 
+    def is_filled(self):
+        return len(self.children) == 2
+
+class Declaration(Node):
+
+    def evaluate(self):
+        #primeiro filho é o identifier, segundo é o tipo
+        key= self.children[0].value #não evaluo em declaration
+        type= self.children[1].evaluate()
+
+        SymbolTable.current.start(key, type)
+
+    def is_filled(self):
+        return len(self.children) == 2
+
+class Type_Node(Node):
+
+    def evaluate(self):
+        return self.value
+
+    def is_filled(self):
+        return len(self.children) == 0
+
 #class Comparison_BinOP(Node):
 #Juntei esse no BinOP, tem o mesmo formato de entrada e saída então why not
 
 class Parser():
+    #A partir do 2.3, vou pensar neste como o Program
 
     def run(code):
         Tokenizer.init(code)
 
-        root= Statements()
-        root.add_child( StatementsParser.run() )
+        root= Main_Node()
+        #checar o boilerplate inicial
+        if Tokenizer.selectNext().type != 'SUB':
+            raise Exception('Error: Unexpected word \"'+t.value+"\" of type \""+t.type+"\", expected: SUB")
+
+        if Tokenizer.selectNext().type != 'MAIN':
+            raise Exception('Error: Unexpected word \"'+t.value+"\" of type \""+t.type+"\", expected: MAIN")
+
+        if Tokenizer.selectNext().type != 'PARENTHESIS_OPEN':
+            raise Exception('Error: Unexpected word \"'+t.value+"\" of type \""+t.type+"\", expected: PARENTHESIS_OPEN")
+
+        if Tokenizer.selectNext().type != 'PARENTHESIS_CLOSE':
+            raise Exception('Error: Unexpected word \"'+t.value+"\" of type \""+t.type+"\", expected: PARENTHESIS_CLOSE")
+
+        if Tokenizer.selectNext().type != 'LINE_BREAK':
+            raise Exception('Error: Unexpected word \"'+t.value+"\" of type \""+t.type+"\", expected: LINE_BREAK")
+
+        root.add_child( StatementsParser.run('sub') )
 
         return root
 
@@ -352,7 +417,7 @@ class StatementsParser(Parser):
 
     statement={'PRINT', 'IDENTIFIER', 'IF', 'WHILE'} #Input vai aqui?
 
-    def run():
+    def run(end_context):
         #TODO
         #Acho que estou encaminhado, só preciso de meus parsers
         #Meu pelo menos três mais, dos blocos, do print e do assignment.
@@ -366,7 +431,7 @@ class StatementsParser(Parser):
         while(Tokenizer.selectNext()):
             t= Tokenizer.actual
 
-            if t.type == "END":
+            if t.type == "END" and end_context == 'if':
                 if Tokenizer.selectNext().type == "IF":
                     if Tokenizer.selectNext().type == 'LINE_BREAK':
                         return root
@@ -374,13 +439,19 @@ class StatementsParser(Parser):
                         raise Exception('Error: Unexpected word \"'+str(t.value)+"\" of type \""+str(t.type)+"\", expected: "+"LINE_BREAK")
                 else:
                     raise Exception('Error: Unexpected word \"'+str(t.value)+"\" of type \""+str(t.type)+"\", expected: "+"IF")
-            elif t.type == "WEND":
+            elif t.type == "ELSE" and end_context == 'if':
+                return root
+            elif t.type == "WEND" and end_context == 'while':
                 if Tokenizer.selectNext().type == "LINE_BREAK":
                     return root
                 else:
                     raise Exception('Error: Unexpected word \"'+str(t.value)+"\" of type \""+str(t.type)+"\", expected: "+"LINE_BREAK")
-            elif t.type == "ELSE": #pensar com calma se isso tá certo
-                return root
+            elif t.type == "END" and end_context == 'sub':
+                if Tokenizer.selectNext().type == 'SUB':
+                    return root
+                else:
+                    raise Exception('Error: Unexpected word \"'+str(t.value)+"\" of type \""+str(t.type)+"\", expected: "+"SUB")
+
 
             #Todo: tratar o EOF de verdade (fim do arquivo)
 
@@ -391,6 +462,9 @@ class StatementsParser(Parser):
 
             elif t.type == 'IDENTIFIER':
                 root.add_child(AssignmentParser.run( Identifier(t.value) ))
+
+            elif t.type == 'DIM':
+                root.add_child(DeclarationParser.run())
 
             elif t.type== 'IF':
                 root.add_child(BranchParser.run())
@@ -411,6 +485,27 @@ class StatementsParser(Parser):
         '''
         #raise Exception('Reached EOF before END keyword')
         return root
+
+class DeclarationParser:
+    def run():
+        node= Declaration()
+        t= Tokenizer.selectNext()
+        if t.type != 'IDENTIFIER':
+            raise Exception('Error: Unexpected word \"'+t.value+"\" of type \""+t.type+"\", expected: IDENTIFIER")
+        node.add_child(Identifier(t.value))
+        t= Tokenizer.selectNext()
+        if t.type != 'AS':
+            raise Exception('Error: Unexpected word \"'+t.value+"\" of type \""+t.type+"\", expected: AS")
+        t= Tokenizer.selectNext()
+        if t.type != 'INTEGER' and t.type != 'BOOLEAN':
+            raise Exception('Error: Unexpected word \"'+t.value+"\" of type \""+t.type+"\", expected: [INTEGER, BOOLEAN]")
+        node.add_child(Type_Node(t.value))
+        t= Tokenizer.selectNext()
+        if t.type != 'LINE_BREAK':
+            raise Exception('Error: Unexpected word \"'+t.value+"\" of type \""+t.type+"\", expected: LINE_BREAK")
+
+        return node
+
 
 class AssignmentParser:
     def run(floater= None):
@@ -433,7 +528,7 @@ class LoopParser:
 
         #node.add_child(RelExpressionParser.run())
         node.add_child(ExpressionParser.run())
-        node.add_child(StatementsParser.run())
+        node.add_child(StatementsParser.run('while'))
 
         return node
 
@@ -443,12 +538,12 @@ class BranchParser:
 
         node = IfOp()
         node.add_child(ExpressionParser.run())
-        node.add_child(StatementsParser.run())
+        node.add_child(StatementsParser.run('if'))
 
         #implementar também meu else!
         if Tokenizer.actual.type == 'ELSE':
             if Tokenizer.selectNext().type == 'LINE_BREAK':
-                node.add_child(StatementsParser.run())
+                node.add_child(StatementsParser.run('if'))
             else:
                 raise Exception('Error: Unexpected word \"'+str(t.value)+"\" of type \""+str(t.type)+"\", expected: "+"LINE_BREAK")
 
