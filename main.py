@@ -15,7 +15,9 @@ class Tokenizer:
     position= 0
     actual= None
 
-    keywords=set(['begin', 'end', 'print'])
+    #keywords=set(['begin', 'end', 'print', 'or', 'and', 'not'])
+    #não tenho mais begin e end então?
+    keywords=set(['print', 'input', 'or', 'and', 'not', 'if', 'then', 'else', 'end', 'while', 'wend'])
 
     def init(origin):
         Tokenizer.origin= origin
@@ -92,15 +94,13 @@ class Tokenizer:
             Tokenizer.position+= 1
             Tokenizer.actual= Token('EQUALS', char)
 
-            '''
-            elif char == '<':
-                Tokenizer.position+= 1
-                Tokenizer.actual= Token('LOWER_THAN', char)
+        elif char == '<':
+            Tokenizer.position+= 1
+            Tokenizer.actual= Token('LOWER_THAN', char)
 
-            elif char == '>':
-                Tokenizer.position+= 1
-                Tokenizer.actual= Token('GREATER_THAN', char)
-            '''
+        elif char == '>':
+            Tokenizer.position+= 1
+            Tokenizer.actual= Token('GREATER_THAN', char)
 
         elif char == '\n':
             #linebreak, que agora faz parte do léxico
@@ -153,8 +153,11 @@ class SymbolTable:
 
     def __init__(self, parent=None):
         self.dict= {}
+        '''
         if parent:
             self.dict=parent.dict.copy() #Se entro em um novo escopo de BEGIN/END, uso uma nova symboltable
+        '''
+        #em vez de copy, repopular a ST de tráz? tou na dúvida agora
         self.parent= parent #salva o escopo originário para voltar depois
 
         SymbolTable.current= self
@@ -205,12 +208,15 @@ class NoOp(Node):
 class Statements(Node):
 
     def evaluate(self):
-        SymbolTable(SymbolTable.current)
+        #SymbolTable(SymbolTable.current)
+        #pausar a questão de symbol table até a parte que precisa
+        if not SymbolTable.current:
+            SymbolTable()
 
         for statement in self.children:
             statement.evaluate()
 
-        SymbolTable.current= SymbolTable.current.parent
+        #SymbolTable.current= SymbolTable.current.parent
 
 
     #não acho que faça sentido perguntar se statements está filled, ele não tem um número fixo de filhos
@@ -232,6 +238,17 @@ class BinOp(Node):
             #return self.children[0].evaluate() // self.children[1].evaluate()
             #um -2/4 retorna -1 em vez de 0, acho que esse não é o comportamento que eu quero
             return int( self.children[0].evaluate() / self.children[1].evaluate() )
+        if self.value=='or':
+            return self.children[0].evaluate() or self.children[1].evaluate()
+        if self.value=='and':
+            return self.children[0].evaluate() and self.children[1].evaluate()
+
+        if self.value=="=":
+            return int( self.children[0].evaluate() == self.children[1].evaluate() )
+        if self.value=="<":
+            return int( self.children[0].evaluate() < self.children[1].evaluate() )
+        if self.value==">":
+            return int( self.children[0].evaluate() > self.children[1].evaluate() )
 
     def is_filled(self):
         return len(self.children) == 2
@@ -244,15 +261,41 @@ class PrintOp(Node):
     def is_filled(self):
         return len(self.children) == 1
 
+class IfOp(Node):
+    #três partes, RelExpr, statements 1, statements 2 (opcional)
+
+    def evaluate(self):
+        boo= self.children[0].evaluate()
+
+        if boo == 1:
+            self.children[1].evaluate()
+        elif boo == 0 and len(self.children) == 3:
+            self.children[2].evaluate()
+
+class WhileOp(Node):
+
+    def evaluate(self):
+        #Pra ser sincero eu estou meio confuso aqui
+        #é isso mesmo?
+        while(self.children[0].evaluate()):
+            self.children[1].evaluate()
+
+
+    def is_filled(self):
+        return len(self.children) == 2
+
 class UnOp(Node):
     # +
     # -
+    # not
 
     def evaluate(self):
         #pegar o filho, resolver num Int
         tmp= self.children[0].evaluate()
         if self.value == "-":
             tmp=-tmp
+        elif self.value == 'not':
+            tmp=int(not tmp)
         return tmp
 
     def is_filled(self):
@@ -275,6 +318,14 @@ class Identifier(Node):
     def is_filled(self):
         return len(self.children) == 0
 
+class Input(Node):
+
+    def evaluate(self):
+        return int(input())
+
+    def is_filled(self):
+        return len(self.children) == 0
+
 class AssignOp(Node):
 
     def evaluate(self):
@@ -283,19 +334,8 @@ class AssignOp(Node):
 
         SymbolTable.current.update(key, value)
 
-class Comparison_BinOP(Node):
-
-    def evaluate(self):
-        if self.value=="=":
-            return self.children[0].evaluate() == self.children[1].evaluate()
-        if self.value=="<":
-            return self.children[0].evaluate() < self.children[1].evaluate()
-        if self.value==">":
-            return self.children[0].evaluate() > self.children[1].evaluate()
-
-    def is_filled(self):
-        return len(self.children) == 2
-
+#class Comparison_BinOP(Node):
+#Juntei esse no BinOP, tem o mesmo formato de entrada e saída então why not
 
 class Parser():
 
@@ -303,19 +343,14 @@ class Parser():
         Tokenizer.init(code)
 
         root= Statements()
-        t= Tokenizer.selectNext()
-        while(t):
-            if t.type != "BEGIN":
-                raise Exception('Error: Unexpected word \"'+str(t.value)+"\" of type \""+str(t.type)+"\", expected: BEGIN")
-            root.add_child( StatementsParser.run() )
-            t= Tokenizer.selectNext()
+        root.add_child( StatementsParser.run() )
 
         return root
 
 
 class StatementsParser(Parser):
 
-    statement={'PRINT', 'IDENTIFIER', 'BEGIN', 'END'}
+    statement={'PRINT', 'IDENTIFIER', 'IF', 'WHILE'} #Input vai aqui?
 
     def run():
         #TODO
@@ -324,21 +359,30 @@ class StatementsParser(Parser):
         #Talvez eu ainda possa ter uma expressão pura como um statement
         #Também tenho que decidir como tratar as quebras de linha
 
-        #assumir que quando cheguei aqui já lí um BEGIN
-        EOF= False
+        #preciso estar atento que posso ter 0 statesments no meu bloco
 
         root= Statements()
-
-        t= Tokenizer.selectNext()
-        if t.type != 'LINE_BREAK':
-            raise Exception('Error: Unexpected word \"'+t.value+"\" of type \""+t.type+"\", expected: LINE_BREAK")
 
         while(Tokenizer.selectNext()):
             t= Tokenizer.actual
 
             if t.type == "END":
-                EOF= True
-                break;
+                if Tokenizer.selectNext().type == "IF":
+                    if Tokenizer.selectNext().type == 'LINE_BREAK':
+                        return root
+                    else:
+                        raise Exception('Error: Unexpected word \"'+str(t.value)+"\" of type \""+str(t.type)+"\", expected: "+"LINE_BREAK")
+                else:
+                    raise Exception('Error: Unexpected word \"'+str(t.value)+"\" of type \""+str(t.type)+"\", expected: "+"IF")
+            elif t.type == "WEND":
+                if Tokenizer.selectNext().type == "LINE_BREAK":
+                    return root
+                else:
+                    raise Exception('Error: Unexpected word \"'+str(t.value)+"\" of type \""+str(t.type)+"\", expected: "+"LINE_BREAK")
+            elif t.type == "ELSE": #pensar com calma se isso tá certo
+                return root
+
+            #Todo: tratar o EOF de verdade (fim do arquivo)
 
             elif t.type == 'PRINT':
                 node= PrintOp()
@@ -348,18 +392,25 @@ class StatementsParser(Parser):
             elif t.type == 'IDENTIFIER':
                 root.add_child(AssignmentParser.run( Identifier(t.value) ))
 
-            elif t.type== 'BEGIN':
-                root.add_child(StatementsParser.run())
+            elif t.type== 'IF':
+                root.add_child(BranchParser.run())
+
+            elif t.type == 'WHILE':
+                root.add_child(LoopParser.run())
+
             else:
                 raise Exception('Error: Unexpected word \"'+str(t.value)+"\" of type \""+str(t.type)+"\", expected: "+str(StatementsParser.statement))
 
+        '''
         if EOF:
             t= Tokenizer.selectNext()
             if t.type != 'LINE_BREAK':
                 raise Exception('Error: Unexpected word \"'+str(t.value)+"\" of type \""+str(t.type)+"\", expected: LINE_BREAK")
 
             return root
-        raise Exception('Reached EOF before END keyword')
+        '''
+        #raise Exception('Reached EOF before END keyword')
+        return root
 
 class AssignmentParser:
     def run(floater= None):
@@ -375,9 +426,47 @@ class AssignmentParser:
 
         return root
 
+class LoopParser:
+    def run(floater= None):
+        #aqui tem a RelExp e os Statements
+        node= WhileOp()
+
+        #node.add_child(RelExpressionParser.run())
+        node.add_child(ExpressionParser.run())
+        node.add_child(StatementsParser.run())
+
+        return node
+
+class BranchParser:
+    def run(floater=None):
+        #Acho que tenho que especificar o Then como um possivel fim de expressão
+
+        node = IfOp()
+        node.add_child(ExpressionParser.run())
+        node.add_child(StatementsParser.run())
+
+        #implementar também meu else!
+        if Tokenizer.actual.type == 'ELSE':
+            if Tokenizer.selectNext().type == 'LINE_BREAK':
+                node.add_child(StatementsParser.run())
+            else:
+                raise Exception('Error: Unexpected word \"'+str(t.value)+"\" of type \""+str(t.type)+"\", expected: "+"LINE_BREAK")
+
+        return node
+
+'''
 class RelExpressionParser:
     #ughhhh
+    #segundo o DS, RelExpression tem sempre uma cara dual (expr op expr)
+    #imagino que isso mude no futuro
+
+    #problema 1: como identifico o fim da expressão?
+    #e se eu passar finais especiais como parâmetros?
+
+    #melhor pergunta, o que me impede de tratar RelExpression como um expression?
+    #não posso adicionar os comparadores na árvore como operadores?
     pass
+'''
 
 class ExpressionParser:
     #TODO redefinir a condição de parada deste parser
@@ -399,23 +488,6 @@ class ExpressionParser:
     EOF= False
     emerge= -1
 
-    '''
-    def run():
-        #TODO: Tenho que fazer o loop da expression independente do RootParser
-
-        root= Parser.parseExpression()
-        while(Tokenizer.actual):
-            root= Parser.parseExpression(floater=root)
-
-        #posso checar por EOF pelo tokenizer.actual
-        if Parser.ptoken:
-            raise Exception('Error: Mismatched parenthesis. "(" could not be matched')
-        if 'EOF' not in Parser.states[Parser.state]:
-            raise Exception('Error: Reached EOF before finishing Expression')
-
-        return root
-    '''
-
     def run(shortcircuit=False, scope_power=0):
 
         root= None #node em que tou trabalhando
@@ -434,13 +506,15 @@ class ExpressionParser:
                     floater= IntVal(t.value)
                 elif t.type == 'IDENTIFIER':
                     floater= Identifier(t.value)
-                elif t.type == 'PLUS' or t.type == 'MINUS':
+                elif t.type == 'INPUT':
+                    floater= Input(t.value)
+                elif t.type == 'PLUS' or t.type == 'MINUS' or t.type == 'NOT':
                     #operador unário
                     floater= UnOp(t.value)
                     t= Tokenizer.selectNext()
                     curr= floater
 
-                    while t.type == 'PLUS' or t.type == 'MINUS':
+                    while t.type == 'PLUS' or t.type == 'MINUS' or t.type == 'NOT':
                         hold= UnOp(t.value)
                         curr.add_child( hold )
                         curr= hold
@@ -450,6 +524,8 @@ class ExpressionParser:
                         curr.add_child( IntVal(t.value) )
                     elif t.type == "IDENTIFIER":
                         curr.add_child( Identifier(t.value) )
+                    elif t.type == "INPUT":
+                        curr.add_child( Input(t.value) )
                     else:
                         raise Exception('Error: Unexpected word \"'+str(t.value)+"\" of type \""+str(t.type)+"\", expected: NUMERIC or IDENTIFIER")
 
@@ -461,6 +537,13 @@ class ExpressionParser:
 
             #pensar agora em possíveis EOFs (PARENTHESIS_CLOSE, LINE_BREAK)
             t= Tokenizer.selectNext()
+
+            #fazer uma gambiarrinha aqui pro THEN
+            #ele é redundante pelo LINE_BREAK
+            if t.type == 'THEN':
+                t= Tokenizer.selectNext()
+            #fim da gambiarrinha
+
             if t.type == 'LINE_BREAK':
                 if scope_power == 0:
                     ExpressionParser.EOF= True
@@ -475,11 +558,15 @@ class ExpressionParser:
                     return floater
 
             #operação agora
-            if t.type == 'PLUS' or t.type == 'MINUS':
+            if t.type == 'PLUS' or t.type == 'MINUS' or t.type == 'OR':
                 root= BinOp(t.value)
                 root.add_child(floater)
                 root.add_child(ExpressionParser.run(False, scope_power))
-            elif t.type == "MULT" or t.type == "DIV":
+            elif t.type == 'GREATER_THAN' or t.type == 'LOWER_THAN' or t.type == 'EQUALS':
+                root= BinOp(t.value)
+                root.add_child(floater)
+                root.add_child(ExpressionParser.run(False, scope_power))
+            elif t.type == "MULT" or t.type == "DIV" or t.type == 'AND':
                 root= BinOp(t.value)
                 root.add_child(floater)
                 root.add_child(ExpressionParser.run(True, scope_power))
@@ -497,7 +584,6 @@ class ExpressionParser:
             floater= root
 
             #print(shortcircuit)
-
 
 if len(sys.argv) != 2:
     print("Run with: \'python3 main.py <filename.vbs> \'")
