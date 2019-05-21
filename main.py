@@ -191,6 +191,7 @@ class SymbolTable:
 
 class Node:
 
+    asm_core="" #aqui guardo a parte do meio do meu codigo ASM
 
     def __init__(self, value=None):
         self.value= value
@@ -205,6 +206,9 @@ class Node:
         raise NotImplementedError
 
     def is_filled(self):
+        raise NotImplementedError
+
+    def compile(self)
         raise NotImplementedError
 
     def debug_print(self, tab = 0):
@@ -275,6 +279,12 @@ class BinOp(Node):
             return int( self.children[0].evaluate() < self.children[1].evaluate() )
         if self.value==">":
             return int( self.children[0].evaluate() > self.children[1].evaluate() )
+
+    def compile(self):
+        if self.value=="+":
+            Node.asm_core+= "ADD EAX, EBX\n"
+            Node.asm_core+= "MOV EBX, EAX\n"
+        if self.value=="+":
 
     def is_filled(self):
         return len(self.children) == 2
@@ -685,4 +695,4 @@ if len(sys.argv) != 2:
 else:
     with open(sys.argv[1], 'r') as f:
         sanit= PrePro.run( f.read() )
-        Parser.run( sanit ).evaluate()
+        Parser.run( sanit ).compile()

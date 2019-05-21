@@ -1,7 +1,7 @@
 # LogiComp-2019-1
 Repositório referente a disciplina de Lógica da Computação do aluno Alexandre Young
 
-## Compilador - Etapa 2.2
+## Compilador - Etapa 3.0
 
 ***
 
