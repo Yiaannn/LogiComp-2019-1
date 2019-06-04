@@ -17,7 +17,7 @@ class Tokenizer:
 
     #keywords=set(['begin', 'end', 'print', 'or', 'and', 'not'])
     #não tenho mais begin e end então?
-    keywords=set(['print', 'input', 'or', 'and', 'not', 'if', 'then', 'else', 'end', 'while', 'wend', 'sub', 'main', 'dim', 'as', 'integer', 'boolean'])
+    keywords=set(['print', 'input', 'or', 'and', 'not', 'if', 'then', 'else', 'end', 'while', 'wend', 'sub', 'main', 'dim', 'as', 'integer', 'boolean', 'true', 'false'])
 
     def init(origin):
         Tokenizer.origin= origin
@@ -254,6 +254,9 @@ class BinOp(Node):
     # /
 
     def evaluate(self):
+
+        self.validate()
+
         if self.value=="+":
             return self.children[0].evaluate() + self.children[1].evaluate()
         if self.value=="-":
@@ -264,17 +267,67 @@ class BinOp(Node):
             #return self.children[0].evaluate() // self.children[1].evaluate()
             #um -2/4 retorna -1 em vez de 0, acho que esse não é o comportamento que eu quero
             return int( self.children[0].evaluate() / self.children[1].evaluate() )
-        if self.value=='or':
-            return self.children[0].evaluate() or self.children[1].evaluate()
-        if self.value=='and':
-            return self.children[0].evaluate() and self.children[1].evaluate()
 
-        if self.value=="=":
-            return int( self.children[0].evaluate() == self.children[1].evaluate() )
-        if self.value=="<":
-            return int( self.children[0].evaluate() < self.children[1].evaluate() )
-        if self.value==">":
-            return int( self.children[0].evaluate() > self.children[1].evaluate() )
+    def validate():
+        #quero conferir se ambos meus filhos são ints
+        valid= True
+        valid&= isinstance(self.children[0].evaluate(), int)
+        valid&= isinstance(self.children[1].evaluate(), int)
+
+        if not valid():
+            raise Exception("Operation "+str(self.value)+" is only defined for children of type Int.")
+
+
+    def is_filled(self):
+        return len(self.children) == 2
+
+class BoolBinOp(Node):
+    # or
+    # and
+    # =
+    # <
+    # >
+
+    def evaluate(self):
+        #preciso me certificar que tou operando em boolean
+
+        if self.value == 'or' or self.value == 'else':
+
+            self.validate_bool():
+
+            if self.value=='or':
+                return self.children[0].evaluate() or self.children[1].evaluate()
+            if self.value=='and':
+                return self.children[0].evaluate() and self.children[1].evaluate()
+
+        else:
+
+            self.validate_int():
+
+            if self.value=="=":
+                return self.children[0].evaluate() == self.children[1].evaluate()
+            if self.value=="<":
+                return self.children[0].evaluate() < self.children[1].evaluate()
+            if self.value==">":
+                return self.children[0].evaluate() > self.children[1].evaluate()
+
+    def validate_int():
+        #quero conferir se ambos meus filhos são ints
+        valid= True
+        valid&= isinstance(self.children[0].evaluate(), int)
+        valid&= isinstance(self.children[1].evaluate(), int)
+
+        if not valid():
+            raise Exception("Operation "+str(self.value)+" is only defined for children of type Int.")
+
+    def validate_bool():
+        #quero conferir se ambos meus filhos são ints
+        valid= True
+        valid&= isinstance(self.children[0].evaluate(), bool)
+        valid&= isinstance(self.children[1].evaluate(), bool)
+
+        if not valid():
+            raise Exception("Operation "+str(self.value)+" is only defined for children of type Boolean.")
 
     def is_filled(self):
         return len(self.children) == 2
@@ -354,7 +407,7 @@ class Input(Node):
 class AssignOp(Node):
 
     def evaluate(self):
-        key= self.children[0].value #não evaluo em assignment
+        key= self.children[0].value #não evaluo em assignment, ele pode não estar inicializado
         value= self.children[1].evaluate()
 
         SymbolTable.current.update(key, value)
@@ -599,6 +652,8 @@ class ExpressionParser:
                     floater= ExpressionParser.run(False, 1)
                 elif t.type == 'NUMERIC':
                     floater= IntVal(t.value)
+                elif t.type == 'TRUE' or t.type == 'FALSE':
+                    floater= BoolVal(t.value)
                 elif t.type == 'IDENTIFIER':
                     floater= Identifier(t.value)
                 elif t.type == 'INPUT':
@@ -617,12 +672,14 @@ class ExpressionParser:
 
                     if t.type == "NUMERIC":
                         curr.add_child( IntVal(t.value) )
+                    elif t.type == 'TRUE' or t.type == 'FALSE':
+                        curr.add_child( BoolVal(t.value) )
                     elif t.type == "IDENTIFIER":
                         curr.add_child( Identifier(t.value) )
                     elif t.type == "INPUT":
                         curr.add_child( Input(t.value) )
                     else:
-                        raise Exception('Error: Unexpected word \"'+str(t.value)+"\" of type \""+str(t.type)+"\", expected: NUMERIC or IDENTIFIER")
+                        raise Exception('Error: Unexpected word \"'+str(t.value)+"\" of type \""+str(t.type)+"\", expected: NUMERIC, TRUE, FALSE or IDENTIFIER")
 
                 else:
                     raise Exception('Error: Unexpected word \"'+str(t.value)+"\" of type \""+str(t.type)+"\", expected: NUMERIC, PARENTHESIS_OPEN, PLUS or MINUS")
